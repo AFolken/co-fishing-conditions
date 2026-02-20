@@ -162,7 +162,7 @@ class USGSWaterClient:
         streamflow (00060) and water temperature (00010).
         """
         if parameter_codes is None:
-            parameter_codes = [self.PARAM_STREAMFLOW, self.PARAM_TEMPERATURE]
+            parameter_codes = [self.PARAM_STREAMFLOW, self.PARAM_TEMPERATURE, self.PARAM_HEIGHT]
 
         raw = self.get_instantaneous_values(
             site=site,
