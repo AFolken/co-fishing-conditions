@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "co-fishing-conditions"
+version = "0.1.0"
+description = "Colorado fishing conditions predictor — aggregates USGS, CPW, weather, and solunar data"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.28",
+    "pandas>=2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
