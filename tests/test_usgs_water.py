@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 import requests
 
-from co_fishing_conditions.usgs_water import USGSWaterClient
+from ingest.usgs_water import USGSWaterClient
 
 
 @pytest.fixture()
