@@ -23,6 +23,7 @@ class USGSWaterClient:
     # Common USGS parameter codes
     PARAM_STREAMFLOW = "00060"  # Discharge, cubic feet per second
     PARAM_TEMPERATURE = "00010"  # Water temperature, degrees Celsius
+    PARAM_HEIGHT = "00065" # Water level, feet
 
     DATAFRAME_COLUMNS = [
         "site_code",
