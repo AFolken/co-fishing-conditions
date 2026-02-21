@@ -159,7 +159,7 @@ class USGSWaterClient:
         """Fetch and parse instantaneous values for a single site.
 
         This is the primary method most callers should use.  It defaults to
-        streamflow (00060) and water temperature (00010).
+        streamflow (00060), water temperature (00010), and gage height (00065).
         """
         if parameter_codes is None:
             parameter_codes = [self.PARAM_STREAMFLOW, self.PARAM_TEMPERATURE, self.PARAM_HEIGHT]

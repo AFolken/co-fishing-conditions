@@ -170,4 +170,4 @@ class TestGetSiteData:
             client.get_site_data("07105500")
 
             _, kwargs = mock_get.call_args
-            assert kwargs["params"]["parameterCd"] == "00060,00010"
+            assert kwargs["params"]["parameterCd"] == "00060,00010,00065"
