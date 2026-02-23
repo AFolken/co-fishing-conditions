@@ -36,7 +36,7 @@ class TestGetInstantaneousValues:
             params = kwargs["params"]
             assert params["format"] == "json"
             assert params["sites"] == "07105500"
-            assert params["parameterCd"] == "00060,00010.00065"
+            assert params["parameterCd"] == "00060,00010,00065"
             assert params["period"] == "P7D"
             assert "startDT" not in params
             assert "endDT" not in params
