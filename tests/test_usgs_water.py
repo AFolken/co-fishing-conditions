@@ -157,7 +157,7 @@ class TestGetSiteData:
             df = client.get_site_data("07105500")
 
         assert len(df) == 5
-        assert set(df["parameter_code"].unique()) == {"00060", "00010"}
+        assert set(df["parameter_code"].unique()) == {"00060", "00010", "00065"}
 
     def test_defaults_to_streamflow_and_temperature(
         self, client: USGSWaterClient, sample_usgs_response: dict
@@ -170,4 +170,4 @@ class TestGetSiteData:
             client.get_site_data("07105500")
 
             _, kwargs = mock_get.call_args
-            assert kwargs["params"]["parameterCd"] == "00060,00010"
+            assert kwargs["params"]["parameterCd"] == "00060,00010,00065"
