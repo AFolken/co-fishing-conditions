@@ -27,7 +27,7 @@ class TestGetInstantaneousValues:
         with patch.object(client.session, "get", return_value=mock_resp) as mock_get:
             client.get_instantaneous_values(
                 site="07105500",
-                parameter_codes=["00060", "00010"],
+                parameter_codes=["00060", "00010", "00065"],
                 period="P7D",
             )
 
@@ -36,7 +36,7 @@ class TestGetInstantaneousValues:
             params = kwargs["params"]
             assert params["format"] == "json"
             assert params["sites"] == "07105500"
-            assert params["parameterCd"] == "00060,00010"
+            assert params["parameterCd"] == "00060,00010.00065"
             assert params["period"] == "P7D"
             assert "startDT" not in params
             assert "endDT" not in params
