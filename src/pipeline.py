@@ -131,6 +131,72 @@ def find_days_since_stocking(
     return best
 
 
+def _init_db():
+    """Try to connect to the database and initialise the schema.
+
+    Returns a ``FishingDB`` instance on success, or ``None`` when the
+    database is unavailable (e.g. during ``--dry-run``).
+    """
+    try:
+        from storage.db import FishingDB
+
+        db = FishingDB()
+        db.init_schema()
+        return db
+    except Exception as exc:
+        log.warning("Database unavailable: %s", exc)
+        return None
+
+
+def _ensure_flow_stats_cached(
+    usgs: USGSWaterClient,
+    db,
+    gauged: list[FishingLocation],
+) -> None:
+    """Fetch and cache USGS daily flow statistics for any uncached sites."""
+    missing_sites = [
+        loc.usgs_site_code
+        for loc in gauged
+        if not db.has_flow_stats(loc.usgs_site_code)
+    ]
+    if not missing_sites:
+        log.info("Daily flow stats already cached for all %d gauges", len(gauged))
+        return
+
+    log.info("Fetching daily flow stats for %d uncached gauge(s)...", len(missing_sites))
+    try:
+        stats_df = usgs.get_daily_flow_stats(missing_sites)
+        if not stats_df.empty:
+            count = db.save_daily_flow_stats(stats_df)
+            log.info("Cached %d daily flow stat rows", count)
+        else:
+            log.warning("USGS Statistics Service returned no data")
+    except Exception as exc:
+        log.warning("Failed to fetch daily flow stats: %s", exc)
+
+
+def _lookup_median(
+    loc: FishingLocation,
+    db,
+    today: date,
+) -> float | None:
+    """Look up today's historical median flow for a location.
+
+    Tries the DB cache first, then falls back to the hardcoded value
+    on the location object.
+    """
+    if not loc.usgs_site_code:
+        return loc.historical_median_cfs
+
+    if db is not None:
+        median = db.get_median_flow(loc.usgs_site_code, today.month, today.day)
+        if median is not None:
+            return median
+
+    # Fallback to hardcoded value
+    return loc.historical_median_cfs
+
+
 def run_pipeline(dry_run: bool = False) -> list[FishingScore]:
     """Execute the full pipeline: fetch data, score, optionally store."""
     log.info("Starting pipeline for %d locations", len(MVP_WATERS))
@@ -138,6 +204,14 @@ def run_pipeline(dry_run: bool = False) -> list[FishingScore]:
     usgs = USGSWaterClient()
     weather = WeatherClient()
     cpw = CPWStockingClient()
+
+    # Database — may be None when unavailable or in dry-run mode
+    db = None if dry_run else _init_db()
+
+    # Pre-fetch and cache daily flow statistics (median by day-of-year)
+    gauged = get_locations_with_gauge()
+    if db is not None:
+        _ensure_flow_stats_cached(usgs, db, gauged)
 
     # Fetch stocking report once (shared across all locations)
     stockings: list[StockingEvent] = []
@@ -148,6 +222,7 @@ def run_pipeline(dry_run: bool = False) -> list[FishingScore]:
     except Exception as exc:
         log.warning("CPW stocking fetch failed: %s", exc)
 
+    today = date.today()
     scores: list[FishingScore] = []
 
     for loc in MVP_WATERS:
@@ -161,18 +236,21 @@ def run_pipeline(dry_run: bool = False) -> list[FishingScore]:
 
         # 3. Solunar rating
         solunar_rating = compute_solunar_rating(
-            date.today(), loc.latitude, loc.longitude
+            today, loc.latitude, loc.longitude
         )
 
         # 4. Stocking recency
         days_since = find_days_since_stocking(loc, stockings)
 
-        # 5. Compute score
+        # 5. Look up today's historical median flow (dynamic > hardcoded)
+        median = _lookup_median(loc, db, today)
+
+        # 6. Compute score
         score = compute_score(
             loc,
             water_temp_c=water["water_temp_c"],
             streamflow_cfs=water["streamflow_cfs"],
-            historical_median_cfs=loc.historical_median_cfs,
+            historical_median_cfs=median,
             pressure_trend=wx["pressure_trend"],
             cloud_cover_pct=wx["cloud_cover_pct"],
             wind_speed_kmh=wx["wind_speed_kmh"],
@@ -184,19 +262,16 @@ def run_pipeline(dry_run: bool = False) -> list[FishingScore]:
     # Sort by total score descending
     scores.sort(key=lambda s: s.total, reverse=True)
 
-    # Store results (when not dry-running)
-    if not dry_run:
+    # Store results
+    if db is not None:
         try:
-            from storage.db import FishingDB
-
-            db = FishingDB()
-            db.init_schema()
             db.upsert_locations(MVP_WATERS)
             db.save_scores(scores)
-            db.close()
             log.info("Scores saved to database")
         except Exception as exc:
             log.warning("Database storage failed: %s", exc)
+        finally:
+            db.close()
 
     return scores
 

@@ -61,6 +61,19 @@ CREATE TABLE IF NOT EXISTS stocking_events (
 CREATE INDEX IF NOT EXISTS idx_stocking_date ON stocking_events (stocking_date);
 
 -- ---------------------------------------------------------------------------
+-- Daily flow statistics (from USGS Statistics Service)
+-- Historical median (p50) streamflow by day-of-year, cached locally.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS daily_flow_stats (
+    usgs_site_code  TEXT NOT NULL,
+    month_nu        SMALLINT NOT NULL,          -- 1-12
+    day_nu          SMALLINT NOT NULL,           -- 1-31
+    median_cfs      DOUBLE PRECISION NOT NULL,
+    fetched_at      TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (usgs_site_code, month_nu, day_nu)
+);
+
+-- ---------------------------------------------------------------------------
 -- Fishing scores (computed by scoring engine)
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS fishing_scores (
