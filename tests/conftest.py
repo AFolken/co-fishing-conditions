@@ -140,3 +140,27 @@ def empty_usgs_response() -> dict:
             "timeSeries": [],
         }
     }
+
+
+@pytest.fixture()
+def sample_usgs_stats_rdb() -> str:
+    """Realistic USGS Statistics Service daily RDB response.
+
+    Contains median (p50) daily statistics for two sites across
+    three day-of-year entries each.
+    """
+    return (
+        "# ---------------------------------- WARNING ----------------------------------------\n"
+        "# Provisional data are subject to revision.\n"
+        "# -----------------------------------------------------------------------------------\n"
+        "#\n"
+        "agency_cd\tsite_no\tparameter_cd\tts_id\tloc_web_ds\tmonth_nu\tday_nu\t"
+        "begin_yr\tend_yr\tcount_nu\tp50_va\n"
+        "5s\t15s\t5s\t10n\t12s\t2n\t2n\t4n\t4n\t8n\t12s\n"
+        "USGS\t07105500\t00060\t12345\t\t1\t1\t1940\t2024\t85\t15.0\n"
+        "USGS\t07105500\t00060\t12345\t\t2\t14\t1940\t2024\t85\t22.5\n"
+        "USGS\t07105500\t00060\t12345\t\t6\t15\t1940\t2024\t85\t120.0\n"
+        "USGS\t09050700\t00060\t67890\t\t1\t1\t1960\t2024\t65\t95.0\n"
+        "USGS\t09050700\t00060\t67890\t\t2\t14\t1960\t2024\t65\t110.0\n"
+        "USGS\t09050700\t00060\t67890\t\t6\t15\t1960\t2024\t65\t450.0\n"
+    )

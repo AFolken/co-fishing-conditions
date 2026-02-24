@@ -23,6 +23,7 @@ class FishingLocation:
     is_gold_medal: bool = False
     region: str = ""
     elevation_ft: float | None = None
+    historical_median_cfs: float | None = None
 
 
 @dataclass

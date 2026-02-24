@@ -209,6 +209,53 @@ class FishingDB:
         """
         return pd.read_sql(sql, self.conn, params=(days,))
 
+    # -- daily flow statistics -----------------------------------------------
+
+    def save_daily_flow_stats(self, df: pd.DataFrame) -> int:
+        """Upsert daily flow statistics from the USGS Statistics Service.
+
+        Expects columns: site_code, month_nu, day_nu, median_cfs.
+        """
+        if df.empty:
+            return 0
+
+        sql = """
+            INSERT INTO daily_flow_stats (usgs_site_code, month_nu, day_nu, median_cfs)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (usgs_site_code, month_nu, day_nu) DO UPDATE SET
+                median_cfs = EXCLUDED.median_cfs,
+                fetched_at = NOW()
+        """
+        rows = [
+            (row["site_code"], int(row["month_nu"]), int(row["day_nu"]), float(row["median_cfs"]))
+            for _, row in df.iterrows()
+        ]
+        with self.conn.cursor() as cur:
+            psycopg2.extras.execute_batch(cur, sql, rows)
+        return len(rows)
+
+    def get_median_flow(self, usgs_site_code: str, month: int, day: int) -> float | None:
+        """Look up the cached historical median flow for a site and day-of-year."""
+        sql = """
+            SELECT median_cfs FROM daily_flow_stats
+            WHERE usgs_site_code = %s AND month_nu = %s AND day_nu = %s
+        """
+        with self.conn.cursor() as cur:
+            cur.execute(sql, (usgs_site_code, month, day))
+            row = cur.fetchone()
+        return float(row[0]) if row else None
+
+    def has_flow_stats(self, usgs_site_code: str) -> bool:
+        """Check whether daily flow stats are cached for a site."""
+        sql = """
+            SELECT EXISTS(
+                SELECT 1 FROM daily_flow_stats WHERE usgs_site_code = %s
+            )
+        """
+        with self.conn.cursor() as cur:
+            cur.execute(sql, (usgs_site_code,))
+            return cur.fetchone()[0]
+
     # -- fishing scores ------------------------------------------------------
 
     def save_scores(self, scores: list[FishingScore]) -> int:
