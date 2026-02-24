@@ -172,6 +172,7 @@ def run_pipeline(dry_run: bool = False) -> list[FishingScore]:
             loc,
             water_temp_c=water["water_temp_c"],
             streamflow_cfs=water["streamflow_cfs"],
+            historical_median_cfs=loc.historical_median_cfs,
             pressure_trend=wx["pressure_trend"],
             cloud_cover_pct=wx["cloud_cover_pct"],
             wind_speed_kmh=wx["wind_speed_kmh"],

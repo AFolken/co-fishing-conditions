@@ -28,7 +28,7 @@ services:
     volumes:
       - ./src:/app/src
     command: >
-      python -m pipeline
+      bash -c "python -m pipeline && streamlit run src/app/dashboard.py --server.address=0.0.0.0 --server.port=8501"
 
 volumes:
   pgdata:

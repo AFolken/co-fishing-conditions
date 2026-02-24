@@ -20,6 +20,7 @@ _FOUNTAIN_CREEK = FishingLocation(
     water_type="river",
     usgs_site_code="07105500",
     region="Colorado Springs",
+    historical_median_cfs=25.0,
 )
 
 _ELEVEN_MILE = FishingLocation(
@@ -31,6 +32,7 @@ _ELEVEN_MILE = FishingLocation(
     usgs_site_code="06696980",  # S Platte R below Eleven Mile Canyon
     is_gold_medal=False,
     region="Colorado Springs",
+    historical_median_cfs=150.0,
 )
 
 _SPINNEY_MOUNTAIN = FishingLocation(
@@ -42,6 +44,7 @@ _SPINNEY_MOUNTAIN = FishingLocation(
     usgs_site_code="06695000",  # S Platte R at Hartsel
     is_gold_medal=False,
     region="Colorado Springs",
+    historical_median_cfs=75.0,
 )
 
 _NORTH_CATAMOUNT = FishingLocation(
@@ -92,6 +95,7 @@ _PUEBLO_RESERVOIR = FishingLocation(
     water_type="reservoir",
     usgs_site_code="07099400",  # Arkansas R above Pueblo
     region="Colorado Springs",
+    historical_median_cfs=300.0,
 )
 
 # ---------------------------------------------------------------------------
@@ -107,6 +111,7 @@ _CHEESMAN_CANYON = FishingLocation(
     usgs_site_code="06701900",  # S Platte R at Trumbull
     is_gold_medal=True,
     region="Front Range",
+    historical_median_cfs=200.0,
 )
 
 _ARKANSAS_SALIDA = FishingLocation(
@@ -118,6 +123,7 @@ _ARKANSAS_SALIDA = FishingLocation(
     usgs_site_code="07091200",  # Arkansas R near Nathrop
     is_gold_medal=True,
     region="Central Mountains",
+    historical_median_cfs=450.0,
 )
 
 _ARKANSAS_BV = FishingLocation(
@@ -126,9 +132,10 @@ _ARKANSAS_BV = FishingLocation(
     latitude=38.8422,
     longitude=-106.1311,
     water_type="river",
-    usgs_site_code="07087050",  # Arkansas R below Pueblo Res
+    usgs_site_code="07087200",  # Arkansas R at Buena Vista
     is_gold_medal=True,
     region="Central Mountains",
+    historical_median_cfs=350.0,
 )
 
 _BLUE_RIVER = FishingLocation(
@@ -140,6 +147,7 @@ _BLUE_RIVER = FishingLocation(
     usgs_site_code="09050700",  # Blue R below Dillon
     is_gold_medal=True,
     region="Summit County",
+    historical_median_cfs=180.0,
 )
 
 _FRYING_PAN = FishingLocation(
@@ -151,6 +159,7 @@ _FRYING_PAN = FishingLocation(
     usgs_site_code="09080400",  # Frying Pan R at Basalt
     is_gold_medal=True,
     region="Roaring Fork Valley",
+    historical_median_cfs=100.0,
 )
 
 _HORSETOOTH = FishingLocation(
@@ -171,6 +180,7 @@ _CHATFIELD = FishingLocation(
     water_type="reservoir",
     usgs_site_code="06711565",  # S Platte R at Chatfield
     region="Denver Metro",
+    historical_median_cfs=350.0,
 )
 
 # ---------------------------------------------------------------------------
