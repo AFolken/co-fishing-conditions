@@ -84,6 +84,7 @@ def fetch_weather_data(
         "pressure_trend": "stable_high",
         "cloud_cover_pct": 50.0,
         "wind_speed_kmh": 10.0,
+        "air_temp_c": None,
     }
 
     try:
@@ -102,6 +103,7 @@ def fetch_weather_data(
         latest = past.iloc[-1]
         result["cloud_cover_pct"] = float(latest["cloud_cover_pct"])
         result["wind_speed_kmh"] = float(latest["wind_speed_kmh"])
+        result["air_temp_c"] = float(latest["temperature_c"])
 
         # Compute pressure trend from last 6 hours
         six_hours_ago = now - pd.Timedelta(hours=6)
@@ -249,6 +251,7 @@ def run_pipeline(dry_run: bool = False) -> list[FishingScore]:
         score = compute_score(
             loc,
             water_temp_c=water["water_temp_c"],
+            air_temp_c=wx["air_temp_c"],
             streamflow_cfs=water["streamflow_cfs"],
             historical_median_cfs=median,
             pressure_trend=wx["pressure_trend"],

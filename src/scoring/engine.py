@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 
 from scoring.scorers import (
+    estimate_water_temp_from_air,
     score_flow,
     score_solunar,
     score_stocking,
@@ -23,6 +24,7 @@ def compute_score(
     location: FishingLocation,
     *,
     water_temp_c: float | None = None,
+    air_temp_c: float | None = None,
     streamflow_cfs: float | None = None,
     historical_median_cfs: float | None = None,
     pressure_trend: str = "stable_high",
@@ -36,11 +38,20 @@ def compute_score(
     All data parameters are optional — missing data degrades gracefully
     to neutral (10/20) scores rather than failing.
     """
-    wt = score_water_temperature(water_temp_c)
+    effective_water_temp = water_temp_c
+    if effective_water_temp is None and air_temp_c is not None:
+        effective_water_temp = estimate_water_temp_from_air(
+            air_temp_c, location.elevation_ft or 6000.0
+        )
+    wt = score_water_temperature(effective_water_temp)
     fl = score_flow(streamflow_cfs, historical_median_cfs)
     wx = score_weather(pressure_trend, cloud_cover_pct, wind_speed_kmh)
     sl = score_solunar(solunar_rating)
-    st = score_stocking(days_since_stocking, is_gold_medal=location.is_gold_medal)
+    st = score_stocking(
+        days_since_stocking,
+        is_gold_medal=location.is_gold_medal,
+        water_type=location.water_type,
+    )
 
     return FishingScore(
         location_id=location.id,

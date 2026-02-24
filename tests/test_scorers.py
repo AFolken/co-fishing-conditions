@@ -3,12 +3,34 @@
 import pytest
 
 from scoring.scorers import (
+    estimate_water_temp_from_air,
     score_flow,
     score_solunar,
     score_stocking,
     score_water_temperature,
     score_weather,
 )
+
+
+# -- estimate_water_temp_from_air --------------------------------------------
+
+
+class TestEstimateWaterTempFromAir:
+    def test_baseline_at_6000ft(self):
+        # 20°C air → 20 - 4 - 0 = 16°C water
+        assert estimate_water_temp_from_air(20.0, 6000.0) == pytest.approx(16.0)
+
+    def test_high_elevation_cooler(self):
+        # 20°C air at 9000 ft → 20 - 4 - 3.0 = 13.0°C
+        assert estimate_water_temp_from_air(20.0, 9000.0) == pytest.approx(13.0)
+
+    def test_low_elevation_warmer(self):
+        # 20°C air at 5000 ft → 20 - 4 - (-1.0) = 17.0°C
+        assert estimate_water_temp_from_air(20.0, 5000.0) == pytest.approx(17.0)
+
+    def test_default_elevation(self):
+        # Default is 6000 ft
+        assert estimate_water_temp_from_air(20.0) == pytest.approx(16.0)
 
 
 # -- score_water_temperature -------------------------------------------------
@@ -77,15 +99,15 @@ class TestScoreWeather:
         assert score_weather("falling_steady", 90.0, 15.0) == 20
 
     def test_stable_high_clear_calm(self):
-        # 12 (stable high) + 0 (clear) + 0 (calm) = 12
-        assert score_weather("stable_high", 10.0, 3.0) == 12
+        # 11 (stable high) + 0 (clear) + 0 (calm) = 11
+        assert score_weather("stable_high", 10.0, 3.0) == 11
 
     def test_rising_partly_cloudy_heavy_wind(self):
-        # 8 (rising) + 1 (partly) - 3 (heavy wind) = 6
-        assert score_weather("rising_steady", 50.0, 45.0) == 6
+        # 7 (rising) + 1 (partly) - 3 (heavy wind) = 5
+        assert score_weather("rising_steady", 50.0, 45.0) == 5
 
     def test_falling_rapid(self):
-        assert score_weather("falling_rapid", 0.0, 0.0) == 5
+        assert score_weather("falling_rapid", 0.0, 0.0) == 4
 
     def test_unknown_trend_defaults(self):
         assert score_weather("unknown", 0.0, 0.0) == 10
@@ -140,3 +162,15 @@ class TestScoreStocking:
     def test_gold_medal_7_days(self):
         # Stocked 5 days ago (15) + gold medal (5) = 20
         assert score_stocking(5, is_gold_medal=True) == 20
+
+    def test_wild_river_no_stocking(self):
+        # River with no stocking data → wild fishery base = 12
+        assert score_stocking(None, water_type="river") == 12
+
+    def test_reservoir_no_stocking(self):
+        # Reservoir with no stocking → still 5
+        assert score_stocking(None, water_type="reservoir") == 5
+
+    def test_gold_medal_river_no_stocking(self):
+        # Gold Medal takes priority over river wild fishery → base 10 + 5 = 15
+        assert score_stocking(None, is_gold_medal=True, water_type="river") == 15

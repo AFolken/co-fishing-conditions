@@ -8,6 +8,17 @@ The thresholds come from the scoring algorithm in fishing-analytics-app-plan.md.
 from __future__ import annotations
 
 
+def estimate_water_temp_from_air(air_temp_c: float, elevation_ft: float = 6000.0) -> float:
+    """Rough water temp estimate from air temp with elevation adjustment.
+
+    Water temperature lags air temperature by ~4 °C and is slightly
+    cooler at higher elevations.  Better than returning neutral (10).
+    """
+    lag = 4.0
+    elevation_adjustment = (elevation_ft - 6000) * 0.001
+    return air_temp_c - lag - elevation_adjustment
+
+
 def score_water_temperature(temp_celsius: float | None) -> int:
     """Score water temperature for trout fishing (0-20).
 
@@ -74,11 +85,11 @@ def score_weather(
     """
     # Base score from pressure trend
     trend_scores = {
-        "falling_steady": 20,
-        "stable_low": 15,
-        "stable_high": 12,
-        "rising_steady": 8,
-        "falling_rapid": 5,
+        "falling_steady": 17,
+        "stable_low": 14,
+        "stable_high": 11,
+        "rising_steady": 7,
+        "falling_rapid": 4,
     }
     base = trend_scores.get(pressure_trend, 10)
 
@@ -106,11 +117,13 @@ def score_solunar(solunar_rating: int) -> int:
 def score_stocking(
     days_since_stocking: int | None,
     is_gold_medal: bool = False,
+    water_type: str = "",
 ) -> int:
     """Score based on recent stocking and Gold Medal designation (0-20).
 
     Returns higher scores for recently stocked waters.
     Gold Medal waters get a +5 bonus (they always fish well).
+    Rivers without stocking data are treated as productive wild fisheries.
     """
     if days_since_stocking is not None and days_since_stocking <= 3:
         base = 20
@@ -120,6 +133,8 @@ def score_stocking(
         base = 8
     elif days_since_stocking is None and is_gold_medal:
         base = 10  # wild fish / Gold Medal waters
+    elif days_since_stocking is None and water_type == "river":
+        base = 12  # wild fishery — rivers without stocking are naturally productive
     else:
         base = 5  # no recent stocking
 

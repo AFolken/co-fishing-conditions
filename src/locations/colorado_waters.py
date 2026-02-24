@@ -55,6 +55,7 @@ _NORTH_CATAMOUNT = FishingLocation(
     water_type="reservoir",
     usgs_site_code=None,
     region="Colorado Springs",
+    elevation_ft=9170.0,
 )
 
 _SOUTH_CATAMOUNT = FishingLocation(
@@ -65,6 +66,7 @@ _SOUTH_CATAMOUNT = FishingLocation(
     water_type="reservoir",
     usgs_site_code=None,
     region="Colorado Springs",
+    elevation_ft=9160.0,
 )
 
 _RAMPART_RESERVOIR = FishingLocation(
@@ -75,6 +77,7 @@ _RAMPART_RESERVOIR = FishingLocation(
     water_type="reservoir",
     usgs_site_code=None,
     region="Colorado Springs",
+    elevation_ft=9100.0,
 )
 
 _MONUMENT_LAKE = FishingLocation(
@@ -85,6 +88,7 @@ _MONUMENT_LAKE = FishingLocation(
     water_type="lake",
     usgs_site_code=None,
     region="Colorado Springs",
+    elevation_ft=8000.0,
 )
 
 _PUEBLO_RESERVOIR = FishingLocation(
@@ -170,6 +174,7 @@ _HORSETOOTH = FishingLocation(
     water_type="reservoir",
     usgs_site_code=None,
     region="Front Range",
+    elevation_ft=5430.0,
 )
 
 _CHATFIELD = FishingLocation(

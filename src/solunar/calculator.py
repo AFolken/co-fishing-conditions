@@ -258,7 +258,7 @@ def compute_solunar_rating(d: date, lat: float, lon: float) -> int:
 
     # Intermediate phases — scale between 4 and 14 based on illumination
     # proximity to new/full moon
-    proximity = 1.0 - abs(illum - 0.5) * 2  # 1.0 at new/full, 0.0 at quarter
+    proximity = 1.0 - min(illum, 1.0 - illum) * 2  # 1.0 at new/full, 0.0 at quarter
     base = 4 + int(proximity * 10)
     if has_overlap:
         base = min(base + 4, 18)  # overlap bonus, capped below new/full
