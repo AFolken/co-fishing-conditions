@@ -9,12 +9,16 @@ listing which waters were stocked with catchable trout.
 
 from __future__ import annotations
 
+import difflib
+import logging
 from datetime import date, datetime, timedelta
 
 import requests
 from bs4 import BeautifulSoup
 
 from storage.models import FishingLocation, StockingEvent
+
+log = logging.getLogger(__name__)
 
 # Static mapping from CPW water names to location IDs.
 # CPW names are informal; this maps them to our FishingLocation slugs.
@@ -151,6 +155,15 @@ class CPWStockingClient:
             if key.lower() == lower_name:
                 return loc_id
 
+        # Fuzzy match as fallback
+        close = difflib.get_close_matches(water_name, lookup.keys(), n=1, cutoff=0.76)
+        if close:
+            matched_key = close[0]
+            loc_id = lookup[matched_key]
+            log.info("Fuzzy-matched CPW name '%s' -> '%s' (location: %s)", water_name, matched_key, loc_id)
+            return loc_id
+
+        log.warning("Unmatched CPW water name: '%s'", water_name)
         return None
 
 

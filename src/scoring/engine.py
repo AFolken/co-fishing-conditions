@@ -32,11 +32,18 @@ def compute_score(
     wind_speed_kmh: float = 10.0,
     solunar_rating: int = 10,
     days_since_stocking: int | None = None,
+    score_date: date | None = None,
 ) -> FishingScore:
     """Compute the composite fishing score for a single location.
 
     All data parameters are optional — missing data degrades gracefully
     to neutral (10/20) scores rather than failing.
+
+    Parameters
+    ----------
+    score_date : date | None
+        The date to assign to this score.  Defaults to today if not given.
+        Used by the forecast pipeline to compute scores for future dates.
     """
     effective_water_temp = water_temp_c
     if effective_water_temp is None and air_temp_c is not None:
@@ -56,7 +63,7 @@ def compute_score(
     return FishingScore(
         location_id=location.id,
         location_name=location.name,
-        score_date=date.today(),
+        score_date=score_date or date.today(),
         water_temp_score=wt,
         flow_score=fl,
         weather_score=wx,
