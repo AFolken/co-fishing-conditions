@@ -88,6 +88,48 @@ class TestComputeScore:
         # Gold Medal with no stocking data → stocking_score should be 15
         assert score.stocking_score == 15
 
+    def test_air_temp_fallback_when_water_temp_missing(self):
+        """When water_temp_c is None but air_temp_c is available,
+        the engine estimates water temp from air temp."""
+        loc = FishingLocation(
+            id="no-gauge-reservoir",
+            name="No Gauge Reservoir",
+            latitude=38.83,
+            longitude=-104.82,
+            water_type="reservoir",
+            elevation_ft=9000.0,
+        )
+        # air_temp_c=20 at 9000ft → estimated water = 20 - 4 - 3 = 13°C (~55°F)
+        # → ideal range → water_temp_score = 20
+        score = compute_score(loc, air_temp_c=20.0)
+        assert score.water_temp_score == 20
+
+    def test_air_temp_not_used_when_water_temp_available(self):
+        """When water_temp_c IS available, air_temp_c should be ignored."""
+        loc = FishingLocation(
+            id="gauged-river",
+            name="Gauged River",
+            latitude=38.83,
+            longitude=-104.82,
+            water_type="river",
+        )
+        # water_temp_c=3.0 (~37°F) → too cold → 0
+        # air_temp_c=20.0 would give ideal range if used — but it shouldn't be
+        score = compute_score(loc, water_temp_c=3.0, air_temp_c=20.0)
+        assert score.water_temp_score == 0
+
+    def test_wild_river_stocking_score(self):
+        """Non-Gold-Medal rivers with no stocking data get wild fishery base."""
+        loc = FishingLocation(
+            id="wild-river",
+            name="Wild River",
+            latitude=38.83,
+            longitude=-104.82,
+            water_type="river",
+        )
+        score = compute_score(loc)
+        assert score.stocking_score == 12
+
     def test_location_metadata(self, sample_location):
         score = compute_score(sample_location)
         assert score.location_id == "test-river"
