@@ -136,6 +136,21 @@ class TestComputeScore:
         assert score.location_name == "Test River"
         assert score.computed_at is not None
 
+    def test_compute_score_custom_date(self, sample_location):
+        """score_date parameter is passed through to the FishingScore."""
+        from datetime import date
+
+        target = date(2026, 3, 15)
+        score = compute_score(sample_location, score_date=target)
+        assert score.score_date == target
+
+    def test_compute_score_default_date_is_today(self, sample_location):
+        """When score_date is not given, defaults to today."""
+        from datetime import date
+
+        score = compute_score(sample_location)
+        assert score.score_date == date.today()
+
 
 class TestLabelScore:
     @pytest.mark.parametrize(

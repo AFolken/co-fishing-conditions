@@ -113,3 +113,34 @@ class TestMatchToLocation:
     def test_custom_mapping(self):
         mapping = {"My Lake": "my-lake-id"}
         assert CPWStockingClient.match_to_location("My Lake", mapping=mapping) == "my-lake-id"
+
+    def test_fuzzy_match_abbreviated(self):
+        """Abbreviated name should fuzzy-match to the full name."""
+        result = CPWStockingClient.match_to_location("Eleven Mile Res.")
+        assert result == "eleven-mile-reservoir"
+
+    def test_fuzzy_match_partial(self):
+        """Partial name with enough similarity should fuzzy-match."""
+        result = CPWStockingClient.match_to_location("Pueblo Res")
+        assert result == "pueblo-reservoir"
+
+    def test_fuzzy_no_match_below_cutoff(self):
+        """Names too different should not fuzzy-match."""
+        result = CPWStockingClient.match_to_location("Some Random Lake")
+        assert result is None
+
+    def test_unmatched_logged(self, caplog):
+        """Unmatched names should produce a warning log message."""
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="ingest.cpw_stocking"):
+            CPWStockingClient.match_to_location("Totally Unknown Water")
+        assert "Unmatched CPW water name: 'Totally Unknown Water'" in caplog.text
+
+    def test_fuzzy_match_logged(self, caplog):
+        """Fuzzy matches should produce an info log message."""
+        import logging
+
+        with caplog.at_level(logging.INFO, logger="ingest.cpw_stocking"):
+            CPWStockingClient.match_to_location("Chatfield Res.")
+        assert "Fuzzy-matched" in caplog.text

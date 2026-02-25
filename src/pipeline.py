@@ -6,6 +6,8 @@ scoring, and storage.  Run directly or via ``docker-compose up app``.
 Usage:
     python -m pipeline                  # score all MVP waters
     python -m pipeline --dry-run        # print scores without storing to DB
+    python -m pipeline --best-bets      # print weekend best-bets summary
+    python -m pipeline --forecast 7     # print 7-day forecast
 """
 
 from __future__ import annotations
@@ -35,25 +37,27 @@ log = logging.getLogger(__name__)
 def fetch_water_data(
     usgs: USGSWaterClient,
     location: FishingLocation,
-) -> dict:
+) -> tuple[dict, pd.DataFrame]:
     """Fetch recent USGS water data for a location.
 
-    Returns a dict with keys: water_temp_c, streamflow_cfs.
-    Values are None if unavailable.
+    Returns a tuple of (result_dict, raw_dataframe).
+    The dict has keys: water_temp_c, streamflow_cfs (None if unavailable).
+    The raw DataFrame may be empty if no data is available.
     """
     result: dict = {"water_temp_c": None, "streamflow_cfs": None}
+    empty_df = pd.DataFrame()
 
     if not location.usgs_site_code:
-        return result
+        return result, empty_df
 
     try:
         df = usgs.get_site_data(location.usgs_site_code, period="P1D")
     except Exception as exc:
         log.warning("USGS fetch failed for %s: %s", location.id, exc)
-        return result
+        return result, empty_df
 
     if df.empty:
-        return result
+        return result, empty_df
 
     # Get latest streamflow
     flow = df[df["parameter_code"] == "00060"]
@@ -69,16 +73,19 @@ def fetch_water_data(
         if pd.notna(latest):
             result["water_temp_c"] = float(latest)
 
-    return result
+    return result, df
 
 
 def fetch_weather_data(
     weather: WeatherClient,
     location: FishingLocation,
-) -> dict:
+    days: int = 1,
+) -> tuple[dict, pd.DataFrame]:
     """Fetch weather conditions for a location.
 
-    Returns a dict with keys: pressure_trend, cloud_cover_pct, wind_speed_kmh.
+    Returns a tuple of (result_dict, raw_dataframe).
+    The dict has keys: pressure_trend, cloud_cover_pct, wind_speed_kmh, air_temp_c.
+    The raw DataFrame contains all hourly forecast rows.
     """
     result = {
         "pressure_trend": "stable_high",
@@ -86,15 +93,16 @@ def fetch_weather_data(
         "wind_speed_kmh": 10.0,
         "air_temp_c": None,
     }
+    empty_df = pd.DataFrame()
 
     try:
-        df = weather.get_forecast(location.latitude, location.longitude, days=1)
+        df = weather.get_forecast(location.latitude, location.longitude, days=days)
     except Exception as exc:
         log.warning("Weather fetch failed for %s: %s", location.id, exc)
-        return result
+        return result, empty_df
 
     if df.empty:
-        return result
+        return result, empty_df
 
     now = pd.Timestamp.now(tz="America/Denver").tz_localize(None)
     past = df[df["datetime"] <= now]
@@ -113,7 +121,7 @@ def fetch_weather_data(
         if len(recent_pressure) >= 2:
             result["pressure_trend"] = weather.compute_pressure_trend(recent_pressure)
 
-    return result
+    return result, df
 
 
 def find_days_since_stocking(
@@ -224,6 +232,14 @@ def run_pipeline(dry_run: bool = False) -> list[FishingScore]:
     except Exception as exc:
         log.warning("CPW stocking fetch failed: %s", exc)
 
+    # Persist stocking events to DB
+    if db is not None and stockings:
+        try:
+            db.save_stocking_events(stockings)
+            log.info("Stocking events saved to database")
+        except Exception as exc:
+            log.warning("Failed to save stocking events: %s", exc)
+
     today = date.today()
     scores: list[FishingScore] = []
 
@@ -231,10 +247,24 @@ def run_pipeline(dry_run: bool = False) -> list[FishingScore]:
         log.info("Processing %s ...", loc.name)
 
         # 1. Water data
-        water = fetch_water_data(usgs, loc)
+        water, water_df = fetch_water_data(usgs, loc)
+
+        # Persist raw water observations
+        if db is not None and not water_df.empty:
+            try:
+                db.save_water_observations(loc.id, water_df)
+            except Exception as exc:
+                log.warning("Failed to save water observations for %s: %s", loc.id, exc)
 
         # 2. Weather data
-        wx = fetch_weather_data(weather, loc)
+        wx, wx_df = fetch_weather_data(weather, loc)
+
+        # Persist raw weather forecast
+        if db is not None and not wx_df.empty:
+            try:
+                db.save_weather_forecast(loc.id, wx_df)
+            except Exception as exc:
+                log.warning("Failed to save weather forecast for %s: %s", loc.id, exc)
 
         # 3. Solunar rating
         solunar_rating = compute_solunar_rating(
@@ -279,6 +309,202 @@ def run_pipeline(dry_run: bool = False) -> list[FishingScore]:
     return scores
 
 
+def _extract_daily_weather(
+    wx_df: pd.DataFrame,
+    target_date: date,
+    weather_client: WeatherClient,
+) -> dict:
+    """Extract weather conditions for a single day from a multi-day forecast DataFrame.
+
+    Filters hourly rows to the target date, computes pressure trend,
+    and averages cloud cover and wind speed for the day.
+    """
+    result = {
+        "pressure_trend": "stable_high",
+        "cloud_cover_pct": 50.0,
+        "wind_speed_kmh": 10.0,
+        "air_temp_c": None,
+    }
+    if wx_df.empty:
+        return result
+
+    target_ts = pd.Timestamp(target_date)
+    day_rows = wx_df[wx_df["datetime"].dt.date == target_date]
+    if day_rows.empty:
+        return result
+
+    # Pressure trend: use all hours in the day
+    pressures = day_rows["pressure_hpa"].dropna()
+    if len(pressures) >= 2:
+        result["pressure_trend"] = weather_client.compute_pressure_trend(pressures)
+
+    result["cloud_cover_pct"] = float(day_rows["cloud_cover_pct"].mean())
+    result["wind_speed_kmh"] = float(day_rows["wind_speed_kmh"].mean())
+
+    # Use midday temperature (or closest available)
+    midday = target_ts + pd.Timedelta(hours=12)
+    temps = day_rows["temperature_c"].dropna()
+    if not temps.empty:
+        closest_idx = (day_rows["datetime"] - midday).abs().idxmin()
+        result["air_temp_c"] = float(day_rows.loc[closest_idx, "temperature_c"])
+
+    return result
+
+
+def run_forecast(days: int = 7) -> dict[str, list[FishingScore]]:
+    """Compute projected scores for each location over the next N days.
+
+    Uses today's water data (USGS doesn't forecast) combined with
+    per-day weather forecasts and solunar ratings.
+
+    Returns a dict mapping location_id to a list of FishingScore objects,
+    one per day (starting from today).
+    """
+    log.info("Running %d-day forecast for %d locations", days, len(MVP_WATERS))
+
+    usgs = USGSWaterClient()
+    weather = WeatherClient()
+    cpw = CPWStockingClient()
+
+    today = date.today()
+
+    # Fetch stocking report once
+    stockings: list[StockingEvent] = []
+    try:
+        html = cpw.fetch_current_report()
+        stockings = cpw.parse_stocking_report(html)
+    except Exception as exc:
+        log.warning("CPW stocking fetch failed: %s", exc)
+
+    forecast: dict[str, list[FishingScore]] = {}
+
+    for loc in MVP_WATERS:
+        log.info("Forecasting %s ...", loc.name)
+
+        # Water data: today's conditions (best available for all days)
+        water, _ = fetch_water_data(usgs, loc)
+
+        # Weather: fetch full multi-day forecast in one call
+        _, wx_df = fetch_weather_data(weather, loc, days=days)
+
+        # Stocking recency for today
+        base_days_since = find_days_since_stocking(loc, stockings)
+
+        # Historical median flow
+        median = loc.historical_median_cfs
+
+        day_scores: list[FishingScore] = []
+        for offset in range(days):
+            target_date = today + timedelta(days=offset)
+
+            # Extract weather for this specific day
+            day_wx = _extract_daily_weather(wx_df, target_date, weather)
+
+            # Solunar rating for this specific day
+            solunar_rating = compute_solunar_rating(
+                target_date, loc.latitude, loc.longitude
+            )
+
+            # Adjust stocking recency by offset
+            days_since = None
+            if base_days_since is not None:
+                days_since = base_days_since + offset
+
+            score = compute_score(
+                loc,
+                water_temp_c=water["water_temp_c"],
+                air_temp_c=day_wx["air_temp_c"],
+                streamflow_cfs=water["streamflow_cfs"],
+                historical_median_cfs=median,
+                pressure_trend=day_wx["pressure_trend"],
+                cloud_cover_pct=day_wx["cloud_cover_pct"],
+                wind_speed_kmh=day_wx["wind_speed_kmh"],
+                solunar_rating=solunar_rating,
+                days_since_stocking=days_since,
+                score_date=target_date,
+            )
+            day_scores.append(score)
+
+        forecast[loc.id] = day_scores
+
+    return forecast
+
+
+def best_bets_weekend() -> str:
+    """Find the best fishing spots for the upcoming weekend.
+
+    Runs the forecast, extracts Saturday and Sunday scores, ranks them,
+    and returns a formatted text summary suitable for newsletters or
+    Reddit posts.
+    """
+    today = date.today()
+
+    # Find next Saturday (weekday 5) and Sunday (weekday 6)
+    days_until_saturday = (5 - today.weekday()) % 7
+    if days_until_saturday == 0 and today.weekday() == 5:
+        days_until_saturday = 0  # today is Saturday
+    elif days_until_saturday == 0:
+        days_until_saturday = 7
+    saturday = today + timedelta(days=days_until_saturday)
+    sunday = saturday + timedelta(days=1)
+
+    # We need enough forecast days to reach Sunday
+    forecast_days = (sunday - today).days + 1
+    forecast = run_forecast(days=forecast_days)
+
+    # Extract Saturday and Sunday scores
+    sat_scores: list[FishingScore] = []
+    sun_scores: list[FishingScore] = []
+    for loc_id, day_scores in forecast.items():
+        for score in day_scores:
+            if score.score_date == saturday:
+                sat_scores.append(score)
+            elif score.score_date == sunday:
+                sun_scores.append(score)
+
+    sat_scores.sort(key=lambda s: s.total, reverse=True)
+    sun_scores.sort(key=lambda s: s.total, reverse=True)
+
+    # Format output
+    lines: list[str] = []
+    lines.append("")
+    lines.append("=" * 60)
+    lines.append(
+        f"  BEST BETS THIS WEEKEND -- {saturday.strftime('%b %d')} - {sunday.strftime('%b %d')}"
+    )
+    lines.append("=" * 60)
+
+    lines.append(f"\n  SATURDAY ({saturday.strftime('%b %d')}):")
+    for i, s in enumerate(sat_scores[:5], 1):
+        lines.append(f"    {i}. {s.location_name} -- {s.total} ({s.label})")
+        lines.append(
+            f"       Temp:{s.water_temp_score:2d} Flow:{s.flow_score:2d} "
+            f"Wx:{s.weather_score:2d} Sol:{s.solunar_score:2d} "
+            f"Stock:{s.stocking_score:2d}"
+        )
+
+    lines.append(f"\n  SUNDAY ({sunday.strftime('%b %d')}):")
+    for i, s in enumerate(sun_scores[:5], 1):
+        lines.append(f"    {i}. {s.location_name} -- {s.total} ({s.label})")
+        lines.append(
+            f"       Temp:{s.water_temp_score:2d} Flow:{s.flow_score:2d} "
+            f"Wx:{s.weather_score:2d} Sol:{s.solunar_score:2d} "
+            f"Stock:{s.stocking_score:2d}"
+        )
+
+    # Top pick across both days
+    all_weekend = sat_scores + sun_scores
+    if all_weekend:
+        top = max(all_weekend, key=lambda s: s.total)
+        day_name = "Saturday" if top.score_date == saturday else "Sunday"
+        lines.append(f"\n  TOP PICK: {top.location_name} on {day_name} ({top.total})")
+
+    lines.append("=" * 60)
+    lines.append("")
+
+    return "\n".join(lines)
+
+
 def print_scores(scores: list[FishingScore]) -> None:
     """Print a ranked leaderboard to stdout."""
     print("\n" + "=" * 70)
@@ -305,7 +531,34 @@ if __name__ == "__main__":
         action="store_true",
         help="Print scores without storing to database",
     )
+    parser.add_argument(
+        "--best-bets",
+        action="store_true",
+        help="Print weekend best-bets summary and exit",
+    )
+    parser.add_argument(
+        "--forecast",
+        type=int,
+        metavar="DAYS",
+        help="Print N-day forecast scores and exit",
+    )
     args = parser.parse_args()
 
-    scores = run_pipeline(dry_run=args.dry_run)
-    print_scores(scores)
+    if args.best_bets:
+        print(best_bets_weekend())
+    elif args.forecast:
+        forecast = run_forecast(days=args.forecast)
+        today = date.today()
+        print("\n" + "=" * 70)
+        print(f"  {args.forecast}-DAY FORECAST")
+        print("=" * 70)
+        for loc in MVP_WATERS:
+            day_scores = forecast.get(loc.id, [])
+            scores_str = "  ".join(
+                f"{s.score_date.strftime('%a'):>3s}:{s.total:2d}" for s in day_scores
+            )
+            print(f"  {loc.name:<40s}  {scores_str}")
+        print("=" * 70 + "\n")
+    else:
+        scores = run_pipeline(dry_run=args.dry_run)
+        print_scores(scores)

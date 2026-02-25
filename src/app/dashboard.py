@@ -1,9 +1,11 @@
 """Streamlit dashboard for Colorado Fishing Conditions.
 
-Three views:
+Five views:
   1. Leaderboard — ranked table of all locations with scores
   2. Map — folium map with color-coded markers
   3. Location Detail — score breakdown, charts, and conditions
+  4. This Week — 7-day forecast grid (locations x days)
+  5. Best Bets — top picks for the upcoming weekend
 
 Run with:
     streamlit run src/app/dashboard.py
@@ -12,15 +14,17 @@ Run with:
 from __future__ import annotations
 
 import sys
+from datetime import date, timedelta
 from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 
 # Ensure src/ is importable
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from locations.colorado_waters import MVP_WATERS
-from pipeline import run_pipeline
+from pipeline import best_bets_weekend, run_forecast, run_pipeline
 from storage.models import FishingScore
 
 # ---------------------------------------------------------------------------
@@ -73,12 +77,39 @@ def load_scores() -> list[dict]:
     ]
 
 
+@st.cache_data(ttl=900)
+def load_forecast() -> dict[str, list[dict]]:
+    """Run the 7-day forecast and return scores as serialisable dicts."""
+    forecast = run_forecast(days=7)
+    result: dict[str, list[dict]] = {}
+    for loc_id, day_scores in forecast.items():
+        result[loc_id] = [
+            {
+                "location_id": s.location_id,
+                "location_name": s.location_name,
+                "score_date": s.score_date.isoformat(),
+                "total": s.total,
+                "label": s.label,
+                "water_temp_score": s.water_temp_score,
+                "flow_score": s.flow_score,
+                "weather_score": s.weather_score,
+                "solunar_score": s.solunar_score,
+                "stocking_score": s.stocking_score,
+            }
+            for s in day_scores
+        ]
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------------------------
 
 st.sidebar.title("CO Fishing Conditions")
-page = st.sidebar.radio("Navigate", ["Leaderboard", "Map", "Location Detail"])
+page = st.sidebar.radio(
+    "Navigate",
+    ["Leaderboard", "Map", "Location Detail", "This Week", "Best Bets"],
+)
 st.sidebar.markdown("---")
 st.sidebar.caption("Data: USGS, CPW, Open-Meteo, Solunar")
 
@@ -215,3 +246,87 @@ elif page == "Location Detail":
             }
         )
         st.bar_chart(components, x="Component", y="Score")
+
+# ---------------------------------------------------------------------------
+# Page: This Week (7-day forecast)
+# ---------------------------------------------------------------------------
+
+elif page == "This Week":
+    st.title("This Week's Forecast")
+    st.markdown("Projected scores for the next 7 days. Weekend columns are highlighted.")
+
+    with st.spinner("Computing 7-day forecast..."):
+        forecast_data = load_forecast()
+
+    if not forecast_data:
+        st.warning("No forecast data available.")
+    else:
+        today = date.today()
+        dates = [today + timedelta(days=i) for i in range(7)]
+        col_headers = [d.strftime("%a %m/%d") for d in dates]
+
+        # Build a DataFrame: rows = locations, columns = dates
+        rows = []
+        for loc in MVP_WATERS:
+            day_scores = forecast_data.get(loc.id, [])
+            row: dict = {"Water": loc.name}
+            for i, d in enumerate(dates):
+                if i < len(day_scores):
+                    row[col_headers[i]] = day_scores[i]["total"]
+                else:
+                    row[col_headers[i]] = ""
+            # Sort key: today's score (first date column)
+            row["_sort"] = day_scores[0]["total"] if day_scores else 0
+            rows.append(row)
+
+        rows.sort(key=lambda r: r["_sort"], reverse=True)
+        for r in rows:
+            del r["_sort"]
+
+        df = pd.DataFrame(rows)
+        df = df.set_index("Water")
+
+        # Color-code cells based on score labels
+        def _score_color(val):
+            if not isinstance(val, (int, float)):
+                return ""
+            if val >= 80:
+                return "background-color: #22c55e; color: white"
+            if val >= 60:
+                return "background-color: #3b82f6; color: white"
+            if val >= 40:
+                return "background-color: #eab308; color: black"
+            if val >= 20:
+                return "background-color: #f97316; color: white"
+            return "background-color: #ef4444; color: white"
+
+        styled = df.style.map(_score_color)
+
+        # Highlight weekend columns
+        weekend_cols = [
+            h for h, d in zip(col_headers, dates) if d.weekday() in (5, 6)
+        ]
+        if weekend_cols:
+            styled = styled.set_properties(
+                subset=weekend_cols,
+                **{"font-weight": "bold"},
+            )
+
+        st.dataframe(styled, use_container_width=True, height=600)
+
+        st.caption(
+            "Water temp and flow use today's readings (USGS does not forecast). "
+            "Weather and solunar scores are projected per day."
+        )
+
+# ---------------------------------------------------------------------------
+# Page: Best Bets (weekend picks)
+# ---------------------------------------------------------------------------
+
+elif page == "Best Bets":
+    st.title("Best Bets This Weekend")
+
+    with st.spinner("Computing weekend forecast..."):
+        bets_text = best_bets_weekend()
+
+    st.code(bets_text, language=None)
